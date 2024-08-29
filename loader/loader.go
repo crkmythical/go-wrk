@@ -43,12 +43,12 @@ type LoadCfg struct {
 
 // RequesterStats used for collecting aggregate statistics
 type RequesterStats struct {
-	TotRespSize    int64
-	TotDuration    time.Duration
-	NumRequests    int
-	NumErrs        int
-	ErrMap		   map[string]int
-	Histogram	   *histo.Histogram
+	TotRespSize int64
+	TotDuration time.Duration
+	NumRequests int
+	NumErrs     int
+	ErrMap      map[string]int
+	Histogram   *histo.Histogram
 }
 
 func NewLoadCfg(duration int, // seconds
@@ -117,7 +117,7 @@ func DoRequest(httpClient *http.Client, header map[string]string, method, host, 
 
 	req, err := http.NewRequest(method, loadUrl, buf)
 	if err != nil {
-		return 0,0,err
+		return 0, 0, err
 	}
 
 	for hk, hv := range header {
@@ -135,12 +135,12 @@ func DoRequest(httpClient *http.Client, header map[string]string, method, host, 
 		// between an invalid URL that was provided and and redirection error.
 		_, ok := err.(*url.Error)
 		if !ok {
-			return 0,0,err
+			return 0, 0, err
 		}
-		return 0,0,err
+		return 0, 0, err
 	}
 	if resp == nil {
-		return 0,0,errors.New("empty response")
+		return 0, 0, errors.New("empty response")
 	}
 	defer func() {
 		if resp != nil && resp.Body != nil {
@@ -149,24 +149,25 @@ func DoRequest(httpClient *http.Client, header map[string]string, method, host, 
 	}()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return 0,0,err
+		return 0, 0, err
 	}
 	if resp.StatusCode/100 == 2 { // Treat all 2XX as successful
 		duration = time.Since(start)
 		respSize = len(body) + int(util.EstimateHttpHeadersSize(resp.Header))
+		fmt.Println(resp.StatusCode)
 	} else if resp.StatusCode == http.StatusMovedPermanently || resp.StatusCode == http.StatusTemporaryRedirect {
 		duration = time.Since(start)
 		respSize = int(resp.ContentLength) + int(util.EstimateHttpHeadersSize(resp.Header))
 	} else {
-		return 0,0,errors.New(fmt.Sprint("received status code ", resp.StatusCode))
+		return 0, 0, errors.New(fmt.Sprint("received status code ", resp.StatusCode))
 	}
 
 	return
 }
 
 func unwrap(err error) error {
-	for errors.Unwrap(err)!=nil {
-		err = errors.Unwrap(err);
+	for errors.Unwrap(err) != nil {
+		err = errors.Unwrap(err)
 	}
 	return err
 }
@@ -174,24 +175,29 @@ func unwrap(err error) error {
 // Requester a go function for repeatedly making requests and aggregating statistics as long as required
 // When it is done, it sends the results using the statsAggregator channel
 func (cfg *LoadCfg) RunSingleLoadSession() {
-	stats := &RequesterStats{ErrMap: make(map[string]int), Histogram: histo.New(1,int64(cfg.duration * 1000000),4)}
+	stats := &RequesterStats{ErrMap: make(map[string]int), Histogram: histo.New(1, int64(cfg.duration*1000000), 4)}
 	start := time.Now()
 
-	httpClient, err := client(cfg.disableCompression, cfg.disableKeepAlive, cfg.skipVerify,
-		cfg.timeoutms, cfg.allowRedirects, cfg.clientCert, cfg.clientKey, cfg.caCert, cfg.http2)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// httpClient, err := client(cfg.disableCompression, cfg.disableKeepAlive, cfg.skipVerify,
+	// 	cfg.timeoutms, cfg.allowRedirects, cfg.clientCert, cfg.clientKey, cfg.caCert, cfg.http2)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
 	for time.Since(start).Seconds() <= float64(cfg.duration) && atomic.LoadInt32(&cfg.interrupted) == 0 {
+		httpClient, err := client(cfg.disableCompression, cfg.disableKeepAlive, cfg.skipVerify,
+			cfg.timeoutms, cfg.allowRedirects, cfg.clientCert, cfg.clientKey, cfg.caCert, cfg.http2)
+		if err != nil {
+			log.Fatal(err)
+		}
 		respSize, reqDur, err := DoRequest(httpClient, cfg.header, cfg.method, cfg.host, cfg.testUrl, cfg.reqBody)
 		if err != nil {
-			stats.ErrMap[unwrap(err).Error()]+=1
+			stats.ErrMap[unwrap(err).Error()] += 1
 			stats.NumErrs++
 		} else if respSize > 0 {
 			stats.TotRespSize += int64(respSize)
 			stats.TotDuration += reqDur
-			stats.Histogram.RecordValue(reqDur.Microseconds());
+			stats.Histogram.RecordValue(reqDur.Microseconds())
 			stats.NumRequests++
 		} else {
 			stats.NumErrs++

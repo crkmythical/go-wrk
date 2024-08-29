@@ -5,12 +5,15 @@ import (
 	"crypto/x509"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 
 	"fmt"
 
-	"golang.org/x/net/http2"
 	"time"
+
+	"github.com/tsliwowicz/go-wrk/proxy"
 	"github.com/tsliwowicz/go-wrk/util"
+	"golang.org/x/net/http2"
 )
 
 func client(disableCompression, disableKeepAlive, skipVerify bool, timeoutms int, allowRedirects bool, clientCert, clientKey, caCert string, usehttp2 bool) (*http.Client, error) {
@@ -22,6 +25,20 @@ func client(disableCompression, disableKeepAlive, skipVerify bool, timeoutms int
 		DisableKeepAlives:     disableKeepAlive,
 		ResponseHeaderTimeout: time.Millisecond * time.Duration(timeoutms),
 		TLSClientConfig:       &tls.Config{InsecureSkipVerify: skipVerify},
+	}
+
+	if proxy.IsProxyNeed() {
+		proxyUrl, e := url.Parse(proxy.GetProxy())
+		if e == nil {
+			fmt.Println(proxyUrl)
+			client.Transport = &http.Transport{
+				DisableCompression:    disableCompression,
+				DisableKeepAlives:     disableKeepAlive,
+				ResponseHeaderTimeout: time.Millisecond * time.Duration(timeoutms),
+				TLSClientConfig:       &tls.Config{InsecureSkipVerify: skipVerify},
+				Proxy:                 http.ProxyURL(proxyUrl),
+			}
+		}
 	}
 
 	if !allowRedirects {

@@ -12,12 +12,13 @@ import (
 
 	histo "github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/tsliwowicz/go-wrk/loader"
+	"github.com/tsliwowicz/go-wrk/proxy"
 	"github.com/tsliwowicz/go-wrk/util"
 )
 
 const APP_VERSION = "0.10"
 
-//default that can be overridden from the command line
+// default that can be overridden from the command line
 var versionFlag bool = false
 var helpFlag bool = false
 var duration int = 10 //seconds
@@ -38,6 +39,7 @@ var reqBody string
 var clientCert string
 var clientKey string
 var caCert string
+var ProxyDir string
 var http2 bool
 var cpus int = 0
 
@@ -60,10 +62,11 @@ func init() {
 	flag.StringVar(&clientCert, "cert", "", "CA certificate file to verify peer against (SSL/TLS)")
 	flag.StringVar(&clientKey, "key", "", "Private key file name (SSL/TLS")
 	flag.StringVar(&caCert, "ca", "", "CA file to verify peer against (SSL/TLS)")
+	flag.StringVar(&ProxyDir, "p", "", "proxy config dir")
 	flag.BoolVar(&http2, "http", true, "Use HTTP/2")
 }
 
-//printDefaults a nicer format for the defaults
+// printDefaults a nicer format for the defaults
 func printDefaults() {
 	fmt.Println("Usage: go-wrk <options> <url>")
 	fmt.Println("Options:")
@@ -73,11 +76,11 @@ func printDefaults() {
 }
 
 func mapToString(m map[string]int) string {
-	s := make([]string,0,len(m))
-	for k,v := range m {
-		s = append(s,fmt.Sprint(k,"=",v))
+	s := make([]string, 0, len(m))
+	for k, v := range m {
+		s = append(s, fmt.Sprint(k, "=", v))
 	}
-	return strings.Join(s,",")
+	return strings.Join(s, ",")
 }
 
 func main() {
@@ -86,7 +89,6 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 
 	signal.Notify(sigChan, os.Interrupt)
-
 	flag.Parse() // Scan the arguments list
 	header = make(map[string]string)
 	if headerFlags != nil {
@@ -121,6 +123,9 @@ func main() {
 		return
 	}
 
+	if ProxyDir != "" {
+		proxy.InitProxyCfg(ProxyDir)
+	}
 	if cpus > 0 {
 		runtime.GOMAXPROCS(cpus)
 	}
@@ -147,7 +152,7 @@ func main() {
 	}
 
 	responders := 0
-	aggStats := loader.RequesterStats{ErrMap: make(map[string]int), Histogram: histo.New(1,int64(duration * 1000000),4)}
+	aggStats := loader.RequesterStats{ErrMap: make(map[string]int), Histogram: histo.New(1, int64(duration*1000000), 4)}
 
 	for responders < goroutines {
 		select {
@@ -160,7 +165,7 @@ func main() {
 			aggStats.TotRespSize += stats.TotRespSize
 			aggStats.TotDuration += stats.TotDuration
 			responders++
-			for k,v := range stats.ErrMap {
+			for k, v := range stats.ErrMap {
 				aggStats.ErrMap[k] += v
 			}
 			aggStats.Histogram.Merge(stats.Histogram)
@@ -208,5 +213,5 @@ func main() {
 }
 
 func toDuration(usecs int64) time.Duration {
-	return time.Duration(usecs*1000)
+	return time.Duration(usecs * 1000)
 }
